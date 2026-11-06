@@ -1,15 +1,11 @@
-# plant-sensor: hardware CI for the plant electrome / leaf-EIS front end
-
 KiCad 9 schematic, ngspice testbenches, and a CI pipeline that checks the schematic (ERC), exports
 netlist/BOM/PDF, simulates every analog block across 27 corners and 2000 Monte Carlo runs, and reports pass/fail
 and yield.
 
-**The point of this repo is to learn Namespace + Docker.** The circuit is the workload. The project goes in two phases:
+Point of this is to apply namespace
 
-| phase | where | status |
-|---|---|---|
-| 1. Baseline | your laptop + plain GitHub-hosted runners (`.github/workflows/ci-baseline.yml`) | local ✅, GitHub run not yet pushed |
-| 2. Namespace | Namespace runners, remote Docker builder, cache volumes, matrix fan-out | **yours to do**, see below |
+Baseline: plain github runners (.github/workflows/ci-baseline.yml)
+Namespace: Namespace runners, remote docker builder, cache volumes, matrix fanout
 
 ## Quick start (local)
 
@@ -22,18 +18,16 @@ make docker-all   # the same `make all`, inside the image
 
 Single runs (all scripts have `--help`):
 
-| command | what it does |
-|---|---|
-| `ngspice -b sim/testbenches/anti_alias.cir` | raw testbench with its nominal `.param` values |
-| `scripts/run_sim.py --block all --bom exports/plant-sensor-bom.csv --corner-index 0` | one corner (0..26) |
-| `scripts/run_sim.py --block eis_excitation --bom … --seed 1234` | reproduce one MC run (run *i* = seed 42 + *i*) |
-| `scripts/mc_shard.py --shard 0 --bom …` | one of the 20 MC shards (100 runs × 4 blocks) |
-| `scripts/report.py --corners results/corners --mc results/mc` | aggregate + histograms |
+ `ngspice -b sim/testbenches/anti_alias.cir` | raw testbench with its nominal `.param` values |
+ `scripts/run_sim.py --block all --bom exports/plant-sensor-bom.csv --corner-index 0` | one corner (0..26) |
+ `scripts/run_sim.py --block eis_excitation --bom … --seed 1234` | reproduce one MC run (run *i* = seed 42 + *i*) |
+ `scripts/mc_shard.py --shard 0 --bom …` | one of the 20 MC shards (100 runs × 4 blocks) |
+ `scripts/report.py --corners results/corners --mc results/mc` | aggregate + histograms |
 
 Component values come from the **schematic**: the BOM export carries `Value`/`Tolerance`/`TempCo`, and
 `run_sim.py` overwrites every `.param <REFDES>` in the testbenches. Editing a part in KiCad changes the simulation.
 
-## Baseline numbers (fill in as you go)
+## Baseline numbers 
 
 | measurement | value |
 |---|---|
@@ -41,14 +35,10 @@ Component values come from the **schematic**: the BOM export carries `Value`/`To
 | 27 corners, serial, local (16-core WSL) | 11 s, 459/459 checks pass |
 | 2000-run MC, local (20 shards × 16 workers) | 77–140 s wall (≈ 1000–1900 s summed ngspice time) |
 | 1 MC shard, 1 worker | 17 s → ≈ 350 s full serial estimate |
-| Red test: C308 47n → 470n | `f3db_hz` 1.55 Hz + `settle_half_lsb_s` 0.59 s fail, exit 1 ✅ |
+| Red test: C308 47n → 470n | `f3db_hz` 1.55 Hz + `settle_half_lsb_s` 0.59 s fail, exit 1 |
 | Docker build time / image size | _not built yet_ |
 | `ci-baseline` erc / export / sim job durations | _not run yet_ |
 | `ci-baseline` time in apt-install step | _not run yet_ |
-
-Expect simulation to be **cheap**: about 0.4 s per corner. On a matrix of 27 runner jobs, job start-up, image pull
-and checkout will cost more than the simulation itself. That overhead is exactly what Namespace's cache volumes and
-fast start are meant to cut, so measure it rather than assume the matrix is faster.
 
 ## Schematic (hardware/)
 
@@ -104,7 +94,7 @@ ngspice 45.2, generic models): 27/27 corners pass (459/459 checks) and 2000-run 
 35.6 dB at the all-caps-+2 % corner (limit 35), and EIS `cmrr_1k_db` 67 dB worst MC run (limit 60). Changing
 C308 47n → 470n fails `f3db_hz` (1.55 Hz) and `settle_half_lsb_s`, and the report names the corners.
 
-## Phase 2: Namespace (yours)
+## Phase 2: Namespace 
 
 `docs/reference/ci-namespace.yml` is the target pipeline the schematic model wrote. It is **inactive** and kept
 as an answer key. It uses runner profile `namespace-profile-plant-sensor`, `nscloud-setup-buildx-action` (remote
