@@ -1,0 +1,4 @@
+(fp_lib_table
+  (version 7)
+  (lib (name "plant-sensor")(type "KiCad")(uri "${KIPRJMOD}/libs/plant-sensor.pretty")(options "")(descr "Project-local footprints"))
+)

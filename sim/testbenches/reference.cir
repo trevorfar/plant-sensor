@@ -1,0 +1,62 @@
+* reference.cir -- bias references: VCM_1V25 (sheet PassiveAFE) and VHALF_1V65 (sheet EIS)
+* REFOUT_2V5 -> R312/R313 (+C309) -> U302D -> VCM_1V25 -> INA REF, R316 -> ADC_AIN1
+* +3V3D -> R407/R408 (+C401) -> U401D -> VHALF_1V65
+* Node names = schematic net labels. Refdes .params are overwritten by scripts/run_sim.py from the BOM.
+.include ../models/generic.lib
+
+* ---- run_sim.py overrides ----
+.param VSUP = 5
+.param R312 = 10k
+.param R313 = 10k
+.param R316 = 1k
+.param R406 = 40.2k
+.param R405 = 10k
+.param R407 = 10k
+.param R408 = 10k
+.param C309 = 1u
+.param C315 = 10n
+.param C401 = 1u
+* ---- test conditions: AD7124 REFOUT (2.5 V, +-0.2 % initial per datasheet) and ADP7118 output modelled ideal
+.param VREFOUT = 2.5
+.param V3D = 3.3
+
+VCC  +5VA  0 DC {VSUP}
+VEE  -5VA  0 DC {-VSUP}
+VAG  AGND 0 DC 0
+VREF REFOUT_2V5 0 DC {VREFOUT} PULSE(0 {VREFOUT} 1m 10u 10u 1 2)
+V3D  +3V3D 0 DC {V3D}
+
+R312 REFOUT_2V5 VCM_DIV {R312}
+R313 VCM_DIV AGND {R313}
+C309 VCM_DIV AGND {C309}
+XU302D VCM_DIV VCM_1V25 VCM_1V25 +5VA -5VA OPAMP_GENERIC
+* INA121 REF pin load: 10k internal to INA output stage (approximation: 20k to INA_OUT ~ VCM)
+RINA VCM_1V25 AGND 20k
+R316 VCM_1V25 ADC_AIN1 {R316}
+C315 ADC_AIN1 AGND {C315}
+
+R407 +3V3D VHALF_DIV {R407}
+R408 VHALF_DIV AGND {R408}
+C401 VHALF_DIV AGND {C401}
+XU401D VHALF_DIV VHALF_1V65 VHALF_1V65 +5VA -5VA OPAMP_GENERIC
+* diff-amp reference leg load: R406 + R405 to SBUF_P (~0 V DC)
+R406 VHALF_1V65 DA_P {R406}
+R405 DA_P AGND {R405}
+
+.control
+set noaskquit
+op
+let vcm = v(VCM_1V25)
+let vh = v(VHALF_1V65)
+set m_vcm = "$&vcm"
+set m_vh = "$&vh"
+tran 20u 0.2 0 100u
+let e = abs(v(ADC_AIN1) - $m_vcm)
+meas tran ts when e=100e-6 fall=last
+let tset = ts - 1m
+echo "METRIC vcm_v $m_vcm"
+echo "METRIC vhalf_v $m_vh"
+echo "METRIC vcm_settle_s $&tset"
+quit
+.endc
+.end

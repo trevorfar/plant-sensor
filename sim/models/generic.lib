@@ -1,0 +1,53 @@
+* ============================================================================
+* GENERIC MACRO-MODELS  --  NOT VENDOR MODELS
+* Written for this project. Behaviour: single-pole open-loop gain, input offset,
+* input bias current, rail-limited output, output resistance. NOT modelled:
+* input common-mode limits / RRIO transition region, noise, slew rate, CMRR/PSRR,
+* temperature drift, supply current. Replace with vendor models (see TODO.md).
+* Parameter values are typical datasheet numbers:
+*   OPA192 family (TI SBOS620): Aol 140 dB, GBW 10 MHz, Vos 5 uV, Ib 5 pA, swing 0.11 V @10k
+*   INA121 (TI SBOS078): G = 1 + 50k/RG, Ib 4 pA, Vos 200 uV RTI, BW 600 kHz @ G=1, swing ~0.9 V
+*   ADG1219 (ADI): on-resistance read from Fig. 5 at +-5 V (~120 ohm), leakage 20 pA
+* ============================================================================
+
+* --- generic voltage-feedback op amp --------------------------------------
+.subckt OPAMP_GENERIC inp inn out vcc vee params: AOL=1e7 GBW=10e6 VOS=5e-6 IB=5e-12 ROUT=50 VSW=0.11
+Vos   inp  inp_i  DC {VOS}
+Ibp   inp  0      DC {IB}
+Ibn   inn  0      DC {IB}
+Rin   inp_i inn   1e12
+Gm    0    n1     inp_i inn {AOL/1e6}
+R1    n1   0      1e6
+C1    n1   0      {AOL/(6.2831853*1e6*GBW)}
+* smooth rail limit: unity slope near mid-supply, saturates VSW from each rail
+Bclip nb   0      V = (v(vcc)+v(vee))/2 + ((v(vcc)-v(vee))/2-{VSW})*tanh((v(n1)-(v(vcc)+v(vee))/2)/((v(vcc)-v(vee))/2-{VSW}))
+Ro    nb   out    {ROUT}
+.ends OPAMP_GENERIC
+
+* --- generic three-op-amp instrumentation amp, INA121 pinout semantics ---
+* ports: +IN -IN RG1 RG2 REF VO V+ V-     (RG1 = pin 1, RG2 = pin 8)
+.subckt INA_GENERIC inp inn rg1 rg2 ref vo vcc vee params: VOS=200e-6 IB=4e-12
+XA1 inp rg1 a1 vcc vee OPAMP_GENERIC params: AOL=1e6 GBW=2e6 VOS={VOS} IB={IB} VSW=0.9
+XA2 inn rg2 a2 vcc vee OPAMP_GENERIC params: AOL=1e6 GBW=2e6 VOS=0 IB={IB} VSW=0.9
+Rf1 a1 rg1 25k
+Rf2 a2 rg2 25k
+R3a a1 p3 10k
+R3b p3 ref 10k
+R3c a2 m3 10k
+R3d m3 vo_i 10k
+XA3 p3 m3 vo_i vcc vee OPAMP_GENERIC params: AOL=1e6 GBW=1.2e6 VOS=0 IB=1e-12 VSW=0.9
+Rvo vo_i vo 1
+.ends INA_GENERIC
+
+* --- generic analog switch throw (one path of ADG1219) --------------------
+.subckt SW_ON a b params: RON=120 CS=3p
+Ron a b {RON}
+Ca a 0 {CS}
+Cb b 0 {CS}
+.ends SW_ON
+.subckt SW_OFF a b params: CS=3p ILK=20e-12
+Roff a b 1e12
+Ilk a 0 DC {ILK}
+Ca a 0 {CS}
+Cb b 0 {CS}
+.ends SW_OFF

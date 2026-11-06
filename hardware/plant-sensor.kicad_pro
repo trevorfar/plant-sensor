@@ -1,0 +1,39 @@
+{
+  "meta": {
+    "filename": "plant-sensor.kicad_pro",
+    "version": 1
+  },
+  "schematic": {
+    "drawing": {
+      "default_line_thickness": 6.0
+    }
+  },
+  "sheets": [
+    [
+      "11f5a371-21e9-5443-b0a4-0bca29966760",
+      "Root"
+    ],
+    [
+      "a5736c6e-58fd-5c78-965f-fd82cf5f61e4",
+      "Power"
+    ],
+    [
+      "7cad6e91-bd96-58bb-9cf7-58f62f86e0de",
+      "Electrodes"
+    ],
+    [
+      "15958bb7-9bb8-58ef-99b4-b062038ddf52",
+      "PassiveAFE"
+    ],
+    [
+      "70c9473e-aef2-5366-968f-38cdf0535684",
+      "EIS"
+    ],
+    [
+      "8c441ea3-2815-5d24-ac35-37487f5b7681",
+      "Digital"
+    ]
+  ],
+  "boards": [],
+  "text_variables": {}
+}

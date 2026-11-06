@@ -1,0 +1,60 @@
+# BASELINE ("before") pipeline on plain GitHub-hosted runners.
+# Deliberately unoptimised: every job pulls the stock KiCad image and apt-installs what it needs,
+# nothing is cached, and the sim job runs all 27 corners + 2000 Monte Carlo runs serially in ONE job.
+# Record these timings; the Namespace version is measured against them.
+name: ci-baseline
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  erc:
+    runs-on: ubuntu-latest
+    container: {image: "kicad/kicad:9.0.9", options: --user root}
+    steps:
+      - uses: actions/checkout@v4
+      - run: apt-get update && apt-get install -y --no-install-recommends make
+      - run: make erc
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: {name: erc-report, path: results/erc.rpt}
+
+  export:
+    needs: erc
+    runs-on: ubuntu-latest
+    container: {image: "kicad/kicad:9.0.9", options: --user root}
+    steps:
+      - uses: actions/checkout@v4
+      - run: apt-get update && apt-get install -y --no-install-recommends make
+      - run: make export
+      - uses: actions/upload-artifact@v4
+        with: {name: exports, path: exports/}
+
+  sim:
+    needs: export
+    runs-on: ubuntu-latest
+    container: {image: "kicad/kicad:9.0.9", options: --user root}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: {name: exports, path: exports}
+      - name: apt install ngspice + Python stack (the step Namespace caching should remove)
+        run: |
+          echo "deb http://deb.debian.org/debian bookworm-backports main" > /etc/apt/sources.list.d/backports.list
+          apt-get update
+          apt-get install -y --no-install-recommends -t bookworm-backports ngspice
+          apt-get install -y --no-install-recommends make python3-numpy python3-scipy python3-yaml python3-matplotlib
+      - name: 27 corners (serial)
+        run: make corners PY=python3 && cat results/corners.md >> "$GITHUB_STEP_SUMMARY"
+      - name: 2000-run Monte Carlo (serial shards, all cores of this one runner)
+        run: make mc PY=python3
+      - name: Report
+        if: always()
+        run: make report PY=python3
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: {name: sim-results, path: results/}

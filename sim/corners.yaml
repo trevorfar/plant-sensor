@@ -1,0 +1,5 @@
+# 3 x 3 x 3 = 27 corners, one GitHub Actions matrix job each (index 0..26).
+# Index order: temperature (slowest) -> supply_v -> process (fastest).
+temperature_c: [-10, 25, 50]        # greenhouse range with margin (ASSUMPTION - confirm, see TODO.md)
+supply_v: [4.5, 5.0, 5.5]           # magnitude of the +-5VA rails: RH-0505D is unregulated, +-10 %
+process: [min, typ, max]            # every R/C at -tol / nominal / +tol (Tolerance field in BOM)

@@ -1,0 +1,36 @@
+# Pass/fail limits per analog block. Keys under `metrics` must match the
+# "METRIC <name> <value>" lines echoed by each testbench's .control block.
+# Limits are design requirements (see README "Spec rationale"), not fitted to results.
+
+anti_alias_ch1:                      # passive electrome path, sheet PassiveAFE
+  testbench: sim/testbenches/anti_alias.cir
+  metrics:
+    dc_gain_db:        {min: 11.95, max: 12.10}   # G = 1 + 50k/16.7k = 3.994 -> 12.03 dB
+    f3db_hz:           {min: 18.0,  max: 23.0}    # 20 Hz LPF (block diagram)
+    att60_db:          {min: 35.0}                # notch + LPF rejection at 60 Hz mains
+    ain0_max_v:        {max: 3.15}                # AD7124 buffered window AVDD-0.1 = 3.2 V, at Vd = +250 mV
+    ain0_min_v:        {min: 0.15}                # AVSS+0.1 = 0.1 V, at Vd = -250 mV
+    settle_half_lsb_s: {max: 0.20}                # to 1/2 LSB at 16 bits (38 uV) after a 200 mV step
+
+eis_sense:                           # tetrapolar sense buffers + diff amp, sheet EIS
+  testbench: sim/testbenches/buffer.cir
+  metrics:
+    gain_1k:    {min: 3.96, max: 4.08}            # 40.2k/10k = 4.02
+    f3db_hz:    {min: 150000}                     # >= 1.5x the 100 kHz AD5933 sweep top
+    cmrr_1k_db: {min: 60}                         # resistor-matching limited (0.1 %)
+    dc_out_v:   {min: 1.60, max: 1.70}            # centred on AD5933 VDD/2 so R409 carries no DC
+
+eis_excitation:                      # AD5933 -> Howland VCCS, sheet EIS
+  testbench: sim/testbenches/excitation.cir
+  metrics:
+    iout_1k_ua:      {min: 1.85, max: 2.10}       # 99 mV / 49.9k = 1.98 uA pk
+    zout_1k_mohm:    {min: 10}                    # current error < 10 % into 1 MOhm contacts
+    iout_100k_ratio: {min: 0.85}                  # cable C (20 pF) + loop gain roll-off at 100 kHz
+    vo_peak_v:       {max: 3.8}                   # compliance headroom at 1 MOhm load, 4.5 V rail
+
+references:                          # VCM_1V25 and VHALF_1V65 bias buffers
+  testbench: sim/testbenches/reference.cir
+  metrics:
+    vcm_v:        {min: 1.245, max: 1.255}        # REFOUT/2, centres AIN0 in the ADC window
+    vhalf_v:      {min: 1.62,  max: 1.68}         # 3V3D/2 tracks AD5933 internal VDD/2
+    vcm_settle_s: {max: 0.10}                     # power-up settling to 100 uV

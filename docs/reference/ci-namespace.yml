@@ -1,0 +1,191 @@
+# REFERENCE ONLY - not active. Written by the schematic model as the target Namespace pipeline.
+# Copy pieces into .github/workflows/ yourself during the Namespace phase (see README "Phase 2").
+# Its image job builds docker/Dockerfile, which now installs ngspice from bookworm-backports.
+
+name: hardware-ci
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write      # push/pull the CI image on GHCR
+  id-token: write      # NAMESPACE: nscloud-setup authenticates to Namespace via GitHub OIDC (not needed on GitHub-hosted)
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # 1 ---------------------------------------------------------------- build + push the tool image
+  image:
+    # NAMESPACE: runner profile created in cloud.namespace.so -> Actions -> Profiles, named "plant-sensor".
+    # Enable a cache volume on it with "Container images" + "Git repository checkouts" ticked.
+    # GitHub-hosted equivalent: runs-on: ubuntu-latest
+    runs-on: namespace-profile-plant-sensor
+    outputs:
+      image: ${{ steps.name.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: name
+        run: echo "image=ghcr.io/${GITHUB_REPOSITORY,,}/plant-sensor-ci:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+      # NAMESPACE: grants this job access to the Namespace workspace (OIDC). GitHub-hosted: no equivalent needed.
+      - uses: namespacelabs/nscloud-setup@v0
+      # NAMESPACE: points docker buildx at a Namespace remote builder whose layer cache persists between runs,
+      # so the ngspice source build is only redone when NGSPICE_VERSION changes.
+      # GitHub-hosted equivalent: docker/setup-buildx-action@v3 plus cache-from/cache-to: type=gha on the build step.
+      - uses: namespacelabs/nscloud-setup-buildx-action@v0
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.name.outputs.image }}
+            ghcr.io/${{ github.repository_owner }}/plant-sensor-ci:latest
+
+  # 2 ---------------------------------------------------------------- electrical rules check
+  erc:
+    needs: image
+    runs-on: namespace-profile-plant-sensor   # NAMESPACE runner (GitHub-hosted: ubuntu-latest)
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with: {registry: ghcr.io, username: "${{ github.actor }}", password: "${{ secrets.GITHUB_TOKEN }}"}
+      # NAMESPACE: with "Container images" caching on the profile this pull is served from the cache volume.
+      # GitHub-hosted: every job pulls the full ~2 GB image from GHCR.
+      - name: kicad-cli ERC (fail on any error)
+        run: |
+          mkdir -p results
+          docker run --rm --user "$(id -u):$(id -g)" -v "$PWD":/work -w /work "${{ needs.image.outputs.image }}" \
+            kicad-cli sch erc --severity-error --exit-code-violations --format report \
+              -o results/erc.rpt hardware/plant-sensor.kicad_sch
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: {name: erc-report, path: results/erc.rpt}
+
+  # 3 ---------------------------------------------------------------- netlist, BOM, PDF + matrix plan
+  export:
+    needs: [image, erc]
+    runs-on: namespace-profile-plant-sensor   # NAMESPACE runner (GitHub-hosted: ubuntu-latest)
+    outputs:
+      corners: ${{ steps.plan.outputs.corners }}
+      shards: ${{ steps.plan.outputs.shards }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with: {registry: ghcr.io, username: "${{ github.actor }}", password: "${{ secrets.GITHUB_TOKEN }}"}
+      - name: Export netlist, BOM (with Tolerance/TempCo), PDF
+        run: |
+          mkdir -p exports
+          R="docker run --rm --user $(id -u):$(id -g) -v $PWD:/work -w /work ${{ needs.image.outputs.image }}"
+          $R kicad-cli sch export netlist -o exports/plant-sensor.net hardware/plant-sensor.kicad_sch
+          $R kicad-cli sch export bom -o exports/plant-sensor-bom.csv \
+            --fields 'Reference,Value,Footprint,Tolerance,TempCo,MPN,${QUANTITY}' \
+            --labels 'Reference,Value,Footprint,Tolerance,TempCo,MPN,Qty' \
+            --group-by 'Value,Footprint,Tolerance,TempCo,MPN' --ref-range-delimiter '' \
+            --string-delimiter '"' hardware/plant-sensor.kicad_sch
+          $R kicad-cli sch export pdf -o exports/plant-sensor.pdf hardware/plant-sensor.kicad_sch
+      - id: plan
+        name: Build matrix lists from sim/corners.yaml and sim/montecarlo.yaml
+        run: |
+          docker run --rm -v "$PWD":/work -w /work "${{ needs.image.outputs.image }}" python3 -c '
+          import yaml, json
+          c = yaml.safe_load(open("sim/corners.yaml")); m = yaml.safe_load(open("sim/montecarlo.yaml"))
+          n = len(c["temperature_c"]) * len(c["supply_v"]) * len(c["process"])
+          print("corners=" + json.dumps(list(range(n))))
+          print("shards=" + json.dumps(list(range(m["shards"]))))' >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with: {name: exports, path: exports/}
+
+  # 4 ---------------------------------------------------------------- 27 corner jobs
+  corners:
+    needs: [image, export]
+    runs-on: namespace-profile-plant-sensor   # NAMESPACE runner (GitHub-hosted: ubuntu-latest)
+    strategy:
+      fail-fast: false                        # let every corner finish so the report lists all failures
+      matrix:
+        corner: ${{ fromJSON(needs.export.outputs.corners) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: {name: exports, path: exports}
+      # NAMESPACE: mounts a directory from the profile's cache volume at this path; it survives across runs.
+      # Reserved for vendor SPICE models fetched at run time (TODO.md); mounted into the container below.
+      # GitHub-hosted equivalent: actions/cache@v4 with a key (upload/download per run instead of a mounted volume).
+      - uses: namespacelabs/nscloud-cache-action@v1
+        with:
+          path: ~/.cache/plant-sensor-models
+      - uses: docker/login-action@v3
+        with: {registry: ghcr.io, username: "${{ github.actor }}", password: "${{ secrets.GITHUB_TOKEN }}"}
+      - name: Simulate every block at corner ${{ matrix.corner }} and check specs
+        run: |
+          mkdir -p results/corners ~/.cache/plant-sensor-models
+          docker run --rm --user "$(id -u):$(id -g)" -v "$PWD":/work -w /work \
+            -v "$HOME/.cache/plant-sensor-models":/opt/vendor-models-cache "${{ needs.image.outputs.image }}" \
+            bash -c "python3 scripts/run_sim.py --bom exports/plant-sensor-bom.csv --corner-index ${{ matrix.corner }} \
+                       --outdir results/corners && \
+                     python3 scripts/check_specs.py results/corners"
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: {name: "corner-${{ matrix.corner }}", path: results/corners/}
+
+  # 5 ---------------------------------------------------------------- 20 Monte Carlo shards
+  # Depends on export (not on corners) so MC runs concurrently with the corner matrix.
+  montecarlo:
+    needs: [image, export]
+    runs-on: namespace-profile-plant-sensor   # NAMESPACE runner (GitHub-hosted: ubuntu-latest)
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ${{ fromJSON(needs.export.outputs.shards) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: {name: exports, path: exports}
+      - uses: namespacelabs/nscloud-cache-action@v1   # NAMESPACE cache volume (see corners job)
+        with:
+          path: ~/.cache/plant-sensor-models
+      - uses: docker/login-action@v3
+        with: {registry: ghcr.io, username: "${{ github.actor }}", password: "${{ secrets.GITHUB_TOKEN }}"}
+      - name: Monte Carlo shard ${{ matrix.shard }}
+        run: |
+          mkdir -p results/mc ~/.cache/plant-sensor-models
+          docker run --rm --user "$(id -u):$(id -g)" -v "$PWD":/work -w /work \
+            -v "$HOME/.cache/plant-sensor-models":/opt/vendor-models-cache "${{ needs.image.outputs.image }}" \
+            python3 scripts/mc_shard.py --shard ${{ matrix.shard }} --bom exports/plant-sensor-bom.csv --outdir results/mc
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: {name: "mc-${{ matrix.shard }}", path: results/mc/}
+
+  # 6 ---------------------------------------------------------------- aggregate
+  report:
+    needs: [image, corners, montecarlo]
+    if: always() && needs.image.result == 'success'
+    runs-on: namespace-profile-plant-sensor   # NAMESPACE runner (GitHub-hosted: ubuntu-latest)
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: {pattern: "corner-*", path: results/corners, merge-multiple: true}
+      - uses: actions/download-artifact@v4
+        with: {pattern: "mc-*", path: results/mc, merge-multiple: true}
+      - uses: docker/login-action@v3
+        with: {registry: ghcr.io, username: "${{ github.actor }}", password: "${{ secrets.GITHUB_TOKEN }}"}
+      - name: Build report
+        run: |
+          set +e
+          docker run --rm --user "$(id -u):$(id -g)" -v "$PWD":/work -w /work "${{ needs.image.outputs.image }}" \
+            python3 scripts/report.py --corners results/corners --mc results/mc --out results/report
+          rc=$?
+          cat results/report/report.md >> "$GITHUB_STEP_SUMMARY"
+          exit $rc
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: {name: report, path: results/report/}

@@ -1,0 +1,90 @@
+* excitation.cir -- EIS excitation, sheet EIS
+* AD5933 VOUT (range 4) -> C405 -> improved Howland (U402A) -> C406 -> SW4 SB -> Rs -> I+ ... I- -> Rs -> SW5 SB -> AGND
+* Node names = schematic net labels. Refdes .params are overwritten by scripts/run_sim.py from the BOM.
+.include ../models/generic.lib
+
+* ---- run_sim.py overrides ----
+.param VSUP = 5
+.param R204 = 10k
+.param R205 = 10k
+.param R412 = 49.9k
+.param R413 = 49.3k
+.param R414 = 49.9k
+.param R415 = 49.9k
+.param R416 = 100k
+.param R417 = 100k
+.param R418 = 100Meg
+.param R419 = 100Meg
+.param C405 = 10u
+.param C406 = 1u
+* ---- test conditions ----
+* AD5933 range 4 at 3.3 V: 198 mVpp around 0.173 V; output resistance per datasheet table (verify, TODO.md)
+.param VEXC = 0.099
+.param VBIAS = 0.173
+.param RAD = 600
+.param RLOAD = 100k
+.param CCAB = 20p
+
+VCC  +5VA  0 DC {VSUP}
+VEE  -5VA  0 DC {-VSUP}
+VAG  AGND 0 DC 0
+
+VAD  AD_INT 0 DC {VBIAS} AC {VEXC}
+RAD  AD_INT AD5933_VOUT {RAD}
+C405 AD5933_VOUT HOW_IN {C405}
+R412 HOW_IN HOW_R3M {R412}
+R413 HOW_R3M HOW_P {R413}
+R414 HOW_L HOW_P {R414}
+R415 HOW_VO HOW_L {R415}
+R416 HOW_N AGND {R416}
+R417 HOW_N HOW_VO {R417}
+XU402A HOW_P HOW_N HOW_VO +5VA -5VA OPAMP_GENERIC
+R418 HOW_L AGND {R418}
+C406 HOW_L EIS_IOUT {C406}
+R419 EIS_IOUT AGND {R419}
+XSW4 EIS_IOUT EP_IP SW_ON
+R204 EP_IP E_IP {R204}
+CCI  E_IP AGND {CCAB}
+VIS  E_IP LOAD_A DC 0
+RL   LOAD_A E_IN {RLOAD}
+CCO  E_IN AGND {CCAB}
+R205 E_IN EP_IN {R205}
+XSW5 EP_IN AGND SW_ON
+
+.control
+set noaskquit
+op
+let vodc = v(HOW_VO)
+set m_vodc = "$&vodc"
+* current amplitude into the default load (RLOAD) at 1 kHz
+ac lin 1 1k 1k
+let iua = mag(i(VIS))*1e6
+set m_iua = "$&iua"
+* 100 kHz / 1 kHz current ratio into 10k, cable capacitance included
+alter RL resistance=10k
+ac lin 1 1k 1k
+let ia1 = mag(i(VIS))
+set m_ia1 = "$&ia1"
+ac lin 1 100k 100k
+let ia100 = mag(i(VIS))
+let ratio100 = ia100/$m_ia1
+set m_r100 = "$&ratio100"
+* board output impedance at 1 kHz from two loads (cable C removed for this measurement)
+alter CCI capacitance=1e-18
+alter CCO capacitance=1e-18
+ac lin 1 1k 1k
+let ia = mag(i(VIS))
+set m_ia = "$&ia"
+alter RL resistance=1Meg
+ac lin 1 1k 1k
+let ib = mag(i(VIS))
+let zs = @R204[resistance] + @R205[resistance] + 240
+let vopk = abs($m_vodc) + mag(v(HOW_VO))
+let zout = abs((ib*(1e6+zs) - $m_ia*(1e4+zs))/($m_ia - ib))/1e6
+echo "METRIC iout_1k_ua $m_iua"
+echo "METRIC zout_1k_mohm $&zout"
+echo "METRIC iout_100k_ratio $m_r100"
+echo "METRIC vo_peak_v $&vopk"
+quit
+.endc
+.end

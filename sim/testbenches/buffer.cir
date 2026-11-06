@@ -1,0 +1,87 @@
+* buffer.cir -- EIS tetrapolar sense path, sheet EIS
+* EIS_SENSE_P/N (via Rs, SW1/SW3 SB) -> U401A/B followers -> U401C diff amp G=4.02 ref VHALF_1V65 -> R409 -> AD5933 VIN
+* Node names = schematic net labels. Refdes .params are overwritten by scripts/run_sim.py from the BOM.
+.include ../models/generic.lib
+
+* ---- run_sim.py overrides ----
+.param VSUP = 5
+.param R201 = 10k
+.param R203 = 10k
+.param R401 = 1G
+.param R402 = 1G
+.param R403 = 10k
+.param R404 = 40.2k
+.param R405 = 10k
+.param R406 = 40.2k
+.param R407 = 10k
+.param R408 = 10k
+.param R409 = 20k
+.param C401 = 1u
+* ---- test conditions ----
+.param RCS = 10k
+.param CCAB = 20p
+.param V3D = 3.3
+
+VCC  +5VA  0 DC {VSUP}
+VEE  -5VA  0 DC {-VSUP}
+V3D  +3V3D 0 DC {V3D}
+VAG  AGND 0 DC 0
+
+* tissue potentials: differential VD (AC 1) and common-mode VC (AC 0 by default)
+VC   LEAF_CM 0     DC 0.5 AC 0
+VDP  LEAF_P LEAF_CM DC 0 AC 0.5
+VDN  LEAF_CM LEAF_N DC 0 AC 0.5
+RCP  LEAF_P E_VP {RCS}
+RCN  LEAF_N E_VN {RCS}
+CCP  E_VP AGND {CCAB}
+CCN  E_VN AGND {CCAB}
+R201 E_VP EP_VP {R201}
+R203 E_VN EP_VN {R203}
+XSW1 EP_VP EIS_SENSE_P SW_ON
+XSW3 EP_VN EIS_SENSE_N SW_ON
+R401 EIS_SENSE_P AGND {R401}
+R402 EIS_SENSE_N AGND {R402}
+
+XU401A EIS_SENSE_P SBUF_P SBUF_P +5VA -5VA OPAMP_GENERIC
+XU401B EIS_SENSE_N SBUF_N SBUF_N +5VA -5VA OPAMP_GENERIC
+R403 SBUF_N DA_N {R403}
+R404 DA_N DIFF_OUT {R404}
+R405 SBUF_P DA_P {R405}
+R406 DA_P VHALF_1V65 {R406}
+XU401C DA_P DA_N DIFF_OUT +5VA -5VA OPAMP_GENERIC
+R407 +3V3D VHALF_DIV {R407}
+R408 VHALF_DIV AGND {R408}
+C401 VHALF_DIV AGND {C401}
+XU401D VHALF_DIV VHALF_1V65 VHALF_1V65 +5VA -5VA OPAMP_GENERIC
+* AD5933 receive TIA = virtual earth at VDD/2
+R409 DIFF_OUT AD5933_VIN {R409}
+VVE  AD5933_VIN 0 DC {V3D/2}
+
+.control
+set noaskquit
+op
+let vdc = v(DIFF_OUT)
+set m_vdc = "$&vdc"
+ac dec 50 100 2Meg
+let gd = mag(v(DIFF_OUT))
+let gddb = db(v(DIFF_OUT))
+meas ac g1k find gd at=1k
+meas ac g1kdb find gddb at=1k
+let tgt = g1kdb - 3
+meas ac fbw when gddb=$&tgt fall=1
+set m_g1k = "$&g1k"
+set m_fbw = "$&fbw"
+* common-mode rejection at 1 kHz
+alter VDP ac=0
+alter VDN ac=0
+alter VC ac=1
+ac lin 1 1k 1k
+let gcm = mag(v(DIFF_OUT))
+let cmrr = 20*log10($m_g1k/gcm)
+echo "METRIC gain_1k $m_g1k"
+echo "METRIC f3db_hz $m_fbw"
+echo "METRIC cmrr_1k_db $&cmrr"
+echo "METRIC dc_out_v $m_vdc"
+quit
+.endc
+.end

@@ -1,0 +1,6 @@
+runs: 2000
+shards: 20                # 100 runs per shard
+distribution: gaussian    # tolerance treated as 3 sigma
+seed: 42                  # run i uses seed + i, so any single run can be reproduced locally
+temperature_c: 25
+supply_v: 5.0

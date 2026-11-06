@@ -1,0 +1,16 @@
+# KiCad noise
+*-backups/
+*.kicad_prl
+fp-info-cache
+_autosave-*
+\#auto_saved_files\#
+*.lck
+# generated
+results/
+exports/
+sim/testbenches/.tmp_*
+__pycache__/
+*.pyc
+.venv/
+# raw downloads from the schematic-generating model (already unpacked into the repo)
+model_out/

@@ -1,0 +1,122 @@
+* anti_alias.cir -- passive electrome path, sheet PassiveAFE
+* electrode V+/REF -> Rs -> SW1/SW2 (SA) -> INA121 (G=3.994) -> twin-T notch -> SK LPF -> ADC_AIN0/AIN1
+* Node names = schematic net labels. Refdes .params are overwritten by scripts/run_sim.py from the BOM.
+.include ../models/generic.lib
+
+* ---- run_sim.py overrides (one .param per line) ----
+.param VSUP = 5
+.param R201 = 10k
+.param R202 = 10k
+.param R301 = 8.35k
+.param R302 = 8.35k
+.param R303 = 1G
+.param R304 = 10Meg
+.param R305 = 26.4k
+.param R306 = 26.4k
+.param R307 = 13.2k
+.param R308 = 10k
+.param R309 = 90.9k
+.param R310 = 115k
+.param R311 = 115k
+.param R315 = 1k
+.param R316 = 1k
+.param C303 = 100n
+.param C304 = 100n
+.param C305 = 100n
+.param C306 = 100n
+.param C307 = 100n
+.param C308 = 47n
+.param C314 = 10n
+.param C315 = 10n
+* ---- test conditions (not BOM parts) ----
+.param RCONT = 1.2Meg
+.param VCM = 1.25
+.param VSTEP = 0.2
+
+VCC  +5VA  0 DC {VSUP}
+VEE  -5VA  0 DC {-VSUP}
+V3A  +3V3A 0 DC 3.3
+VREFCM VCM_1V25 0 DC {VCM}
+
+* leaf: signal between V+ electrode site and plant body; plant body returns via REF
+VSIG  LEAF_P PLANT DC 0 AC 1 PULSE(0 {VSTEP} 10m 1u 1u 10 20)
+RCP   LEAF_P E_VP  {RCONT}
+RCR   PLANT  E_REF {RCONT}
+R201  E_VP   EP_VP  {R201}
+R202  E_REF  EP_REF {R202}
+XSW1  EP_VP  PASS_INP SW_ON
+XSW2  EP_REF PASS_INN SW_ON
+R303  PASS_INP AGND {R303}
+R304  PASS_INN AGND {R304}
+VAG   AGND 0 DC 0
+
+XU301 PASS_INP PASS_INN RG_A RG_B VCM_1V25 INA_OUT +5VA -5VA INA_GENERIC
+R301  RG_A GUARD_CM {R301}
+R302  GUARD_CM RG_B {R302}
+
+* bootstrapped twin-T
+R305  INA_OUT TT_R   {R305}
+R306  TT_R    TT_OUT {R306}
+C303  TT_R    BOOT   {C303}
+C304  TT_R    BOOT   {C304}
+C305  INA_OUT TT_C   {C305}
+C306  TT_C    TT_OUT {C306}
+R307  TT_C    BOOT   {R307}
+XU302A TT_OUT NOTCH_OUT NOTCH_OUT +5VA -5VA OPAMP_GENERIC
+R308  NOTCH_OUT BOOT_DIV {R308}
+R309  BOOT_DIV  AGND     {R309}
+XU302B BOOT_DIV BOOT BOOT +5VA -5VA OPAMP_GENERIC
+
+* Sallen-Key LPF
+R310  NOTCH_OUT LPF_M {R310}
+R311  LPF_M     LPF_P {R311}
+C307  LPF_M     LPF_OUT {C307}
+C308  LPF_P     AGND {C308}
+XU302C LPF_P LPF_OUT LPF_OUT +5VA -5VA OPAMP_GENERIC
+
+* ADC input RC (BAV199 clamp omitted: it only conducts outside 0..3.3 V)
+R315  LPF_OUT  ADC_AIN0 {R315}
+C314  ADC_AIN0 AGND {C314}
+R316  VCM_1V25 ADC_AIN1 {R316}
+C315  ADC_AIN1 AGND {C315}
+* AD7124 modelled as ideal sampler: nothing attached.
+
+.control
+set noaskquit
+* -- frequency response
+ac dec 200 0.01 10k
+let gdb = db(v(ADC_AIN0)-v(ADC_AIN1))
+meas ac g0 find gdb at=0.05
+let tgt = g0 - 3
+meas ac f3 when gdb=$&tgt fall=1
+meas ac g60 find gdb at=60
+let att60 = g0 - g60
+set m_g0 = "$&g0"
+set m_f3 = "$&f3"
+set m_att60 = "$&att60"
+* -- input range: DC with +-250 mV differential input
+alter VSIG dc=0.25
+op
+let ain0max = v(ADC_AIN0)
+set m_max = "$&ain0max"
+alter VSIG dc=-0.25
+op
+let ain0min = v(ADC_AIN0)
+set m_min = "$&ain0min"
+alter VSIG dc=0
+* -- step settling to 1/2 LSB at 16 bits of the +-2.5 V ADC span (38.1 uV)
+tran 50u 0.6 0 200u
+let vd = v(ADC_AIN0) - v(ADC_AIN1)
+let vfin = vd[length(vd)-1]
+let err = abs(vd - vfin)
+meas tran tsettle when err=38.1e-6 cross=last
+let ts = tsettle - 10m
+echo "METRIC dc_gain_db $m_g0"
+echo "METRIC f3db_hz $m_f3"
+echo "METRIC att60_db $m_att60"
+echo "METRIC ain0_max_v $m_max"
+echo "METRIC ain0_min_v $m_min"
+echo "METRIC settle_half_lsb_s $&ts"
+quit
+.endc
+.end

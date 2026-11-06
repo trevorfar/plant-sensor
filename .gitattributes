@@ -1,0 +1,5 @@
+*.kicad_* text eol=lf
+*.cir text eol=lf
+*.lib text eol=lf
+*.yaml text eol=lf
+*.py text eol=lf
