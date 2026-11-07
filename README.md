@@ -60,6 +60,25 @@ Three comparisons were run.
 | Job `export` wall | 43 s | 9 s | 4.78× faster |
 | Job `sim` wall | 237 s (4.0 min) | 79 s | 3.00× faster |
 
+
+### Machine Specs
+
+|Specs |GitHub | Namespace |
+| --- | --- | --- |
+|Name | Debian GNU/Linux 12 (bookworm)| Debian GNU/Linux 12 (bookworm)|
+|vCPUs| 4 | 4 |
+|Model name|  AMD EPYC 9V45 96-Core Processor| AMD EPYC|
+|Thread(s) per core | 2 | 2 |
+|Core(s) per socket | 2 | 2 |
+|Socket(s) | 1 | 1 |
+|L3 cache | 32 MiB | 32 MiB |
+|Memory | 15Gi | 7.8 Gi |
+
+In addition, Namespace was given a 50GB Cache Volume
+
+Notes:
+I ran this off the free github actions Public repo resources. In hindsight, I should have ran the namespace comparisons with 16GB of RAM, although in deeper comparison it didn't look like that was a limiting factor.
+
 ## References
 
 - Our Blueprint report for the Electrome project (the schematic simulated in this project):
@@ -67,3 +86,5 @@ Three comparisons were run.
 - Description of the Capstone project:
   [ELEC 498 Capstone project description](https://smithengineering.queensu.ca/ece/undergraduate/courses/elec-498.html)
 - [ngspice documentation](https://ngspice.sourceforge.io/)
+
+
