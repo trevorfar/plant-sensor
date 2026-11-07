@@ -1,6 +1,4 @@
-# BASELINE ("before") pipeline on plain GitHub-hosted runners.
-# Deliberately unoptimised: every job pulls the stock KiCad image and apt-installs what it needs,
-# nothing is cached, and the sim job runs all 27 corners + 2000 Monte Carlo runs serially in ONE job.
+#Same optimizations as namespace for a decent comparison
 name: ci-baseline
 
 on:
@@ -9,44 +7,73 @@ on:
 
 permissions:
   contents: read
+  packages: write
 
 jobs:
-  erc:
+  image:
     runs-on: ubuntu-latest
-    container: {image: "kicad/kicad:9.0.9", options: --user root} # Get kicad container image
+    outputs:
+      image: ${{ steps.name.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: name # New name so our two flows dont use the same image
+        run: echo "image=ghcr.io/${{ github.repository_owner }}/plant-sensor-ci-gh:${{ hashFiles('docker/Dockerfile') }}" >> "$GITHUB_OUTPUT" # This directly sets up buildx on the runner (github has no remote builder)
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          push: true
+          tags: ${{ steps.name.outputs.image }}
+          cache-from: type=gha #Read from github cache
+          cache-to: type=gha,mode=max
+
+  erc:
+    needs: image
+    runs-on: ubuntu-latest
+    container: 
+      image: ${{ needs.image.outputs.image }}
+      credentials: 
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4 #Clone repo to image
-      - run: apt-get update && apt-get install -y --no-install-recommends make # install make
       - run: make erc #kicad-cli sch erc ( ERC check)
       - if: always()
         uses: actions/upload-artifact@v4
         with: {name: erc-report, path: results/erc.rpt} #saves as an artifact
 
   export: #Fresh machine
-    needs: erc #Waits on the previous workflow
+    needs: [image, erc] #Waits on the previous workflow
     runs-on: ubuntu-latest
-    container: {image: "kicad/kicad:9.0.9", options: --user root}
+    container: 
+      image: ${{ needs.image.outputs.image }}
+      credentials: 
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
-      - run: apt-get update && apt-get install -y --no-install-recommends make
       - run: make export # writes the netlist, BOM CSV and PDF, and uploads them as the exports artifact
       - uses: actions/upload-artifact@v4
         with: {name: exports, path: exports/}
 
   sim: #third machine
-    needs: export #Waits on the previous workflow
+    needs: [image, export] #Waits on the previous workflow
     runs-on: ubuntu-latest
-    container: {image: "kicad/kicad:9.0.9", options: --user root}
+    container: 
+      image: ${{ needs.image.outputs.image }}
+      credentials: 
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with: {name: exports, path: exports} #Downloads the BOM, CSV and PDF
-      - name: apt install ngspice + Python stack 
-        run: |
-          echo "deb http://deb.debian.org/debian bookworm-backports main" > /etc/apt/sources.list.d/backports.list
-          apt-get update
-          apt-get install -y --no-install-recommends -t bookworm-backports ngspice #Free opensource ltspice
-          apt-get install -y --no-install-recommends make python3-numpy python3-scipy python3-yaml python3-matplotlib
       - name: 27 corners (serial) #27 corners (MAKEFILE)
         run: make corners PY=python3 && cat results/corners.md >> "$GITHUB_STEP_SUMMARY"
       - name: 2000-run Monte Carlo (serial shards, all cores of this one runner)

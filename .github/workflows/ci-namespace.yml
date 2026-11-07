@@ -18,7 +18,7 @@ jobs:
       - uses: actions/checkout@v4 #Clone repo to image
     #unique tag per commit, so the job only uses the image built in this run
       - id: name
-        run: echo "image=ghcr.io/${{ github.repository_owner }}/plant-sensor-ci:${{ github.sha }}" >> "$GITHUB_OUTPUT"
+        run: echo "image=ghcr.io/${{ github.repository_owner }}/plant-sensor-ci:${{ hashFiles('docker/Dockerfile') }}" >> "$GITHUB_OUTPUT"
         #point docker buildx to the namespace remote builder
       - uses: namespacelabs/nscloud-setup-buildx-action@v0
       #login to GHCR with the token github gives every run (thus no secret)
