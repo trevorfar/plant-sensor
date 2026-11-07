@@ -171,3 +171,11 @@ Description of the Capstone project:
 ELEC 498 Capstone project description
 ngspice documentation
 KiCad Docker image (kicad/kicad)
+
+# AI Declaration
+Not sure if people even do these anymore, but for transparency, AI was used during this in the following areas:
+   - Revised my writing + formatted this README (If it's unclear, blame Opus 5.5)
+   - Documentation help + compatibility checks for packages in both workflows ( I still handwrote most of the code, as the primary goal for this was learning )
+   - Makefile ( 100% AI, I don't have enough experience with KiCad, all my previous simulations have been done with Cadence )
+   - verify.py ( 100% AI, lazy )
+   - Overall code help, gone are the days of trying to debug error messages.
