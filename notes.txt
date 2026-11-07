@@ -1,0 +1,23 @@
+plant-sensor/
+├── hardware/                  the circuit (KiCad 9 schematic)
+├── sim/                       the simulations
+│   ├── testbenches/*.cir      4 ngspice circuits, one per analog block
+│   ├── models/generic.lib     simplified op-amp / in-amp / switch models
+│   ├── corners.yaml           defines the 27 corners
+│   └── montecarlo.yaml        2000 runs, 20 shards, seed 42
+├── specs/specs.yaml           pass/fail limits for every measured number
+├── scripts/                   Python glue
+│   ├── run_sim.py             run 1 testbench at 1 corner (or 1 random seed) → JSON
+│   ├── check_specs.py         compare JSON results to specs.yaml → table, exit 1 on any fail
+│   ├── mc_shard.py            run one Monte Carlo shard, in parallel over CPU cores
+│   └── report.py              combine everything → report.md + histogram PNGs
+├── Makefile                   short names for the commands above (make erc, make all, …)
+├── docker/Dockerfile          recipe for the all-in-one CI image (not used by CI yet!)
+├── .github/workflows/
+│   └── ci-baseline.yml        ← the ONLY active workflow. Runs on GitHub's machines.
+├── docs/
+│   ├── reference/ci-namespace.yml   the "answer key" Namespace workflow (INACTIVE, outside .github/)
+│   └── WHERE-WE-ARE.md        this file
+├── README.md / TODO.md        overview + open items
+├── requirements.txt           Python packages for your local venv
+└── model_out/                 the raw zip/PDF from the other model (gitignored, not pushed)

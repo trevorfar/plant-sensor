@@ -6,9 +6,10 @@
 
 ARG KICAD_TAG=9.0.9
 FROM kicad/kicad:${KICAD_TAG}
-
+#Start from original kicad image
 USER root
 RUN echo "deb http://deb.debian.org/debian bookworm-backports main" > /etc/apt/sources.list.d/backports.list \
+#Get all our python / ngspice packages
     && apt-get update \
     && apt-get install -y --no-install-recommends -t bookworm-backports ngspice \
     && apt-get install -y --no-install-recommends \
@@ -16,8 +17,7 @@ RUN echo "deb http://deb.debian.org/debian bookworm-backports main" > /etc/apt/s
         git make ca-certificates curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Vendor SPICE models whose licence forbids redistribution are downloaded here, never committed.
-# None are active yet (generic macro-models in sim/models/generic.lib) - see TODO.md.
+# Vendor SPICE models below. They aren't allowed to be redistributed, thus aren't commited
 ENV VENDOR_MODELS=/opt/vendor-models
 RUN mkdir -p ${VENDOR_MODELS}
 
@@ -28,3 +28,4 @@ RUN mkdir -p /tmp/home && chmod 1777 /tmp/home \
 
 WORKDIR /work
 CMD ["bash"]
+#This creates one box with every tool so that we can get rid of the recuring apt-install's on every run
