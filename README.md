@@ -164,7 +164,7 @@ The board has two modes: passive recording of the plant’s electrical signals, 
 plant-sensor.kicad_pro: the project settings
 sym-lib-table, fp-lib-table, libs/: the project’s custom symbol and footprint libraries
 
-#References
+## References
 Our Blueprint report for the Electrome project (the schematic simulated in this project):
 Listen to Plants: A Multichannel Electrical Sensing Platform for Plant Physiology
 Description of the Capstone project:
