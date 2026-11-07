@@ -72,6 +72,13 @@ jobs:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
     steps:
+      - name: Machine info
+        run: |
+          echo "vCPUs: $(nproc)"
+          lscpu | grep -E "Model name|Socket|Thread|Core|MHz|L3"
+          free -h
+          df -h /
+          cat /etc/os-release | grep PRETTY_NAME
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with: {name: exports, path: exports} #Downloads the BOM, CSV and PDF
