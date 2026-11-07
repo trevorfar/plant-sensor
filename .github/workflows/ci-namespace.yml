@@ -1,0 +1,56 @@
+#Namespace run
+name: ci-namespace
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  erc:
+    runs-on: namespace-profile-plant-sensor
+    container: {image: "kicad/kicad:9.0.9", options: --user root} # Get kicad container image
+    steps:
+      - uses: actions/checkout@v4 #Clone repo to image
+      - run: apt-get update && apt-get install -y --no-install-recommends make # install make
+      - run: make erc #kicad-cli sch erc ( ERC check)
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with: {name: erc-report, path: results/erc.rpt} #saves as an artifact
+
+  export: #Fresh machine
+    needs: erc #Waits on the previous job
+    runs-on: namespace-profile-plant-sensor
+    container: {image: "kicad/kicad:9.0.9", options: --user root}
+    steps:
+      - uses: actions/checkout@v4
+      - run: apt-get update && apt-get install -y --no-install-recommends make
+      - run: make export # writes the netlist, BOM CSV and PDF, and uploads them as the exports artifact
+      - uses: actions/upload-artifact@v4
+        with: {name: exports, path: exports/}
+  sim: #third machine
+    needs: export #Waits on the previous workflow
+    runs-on: namespace-profile-plant-sensor
+    container: {image: "kicad/kicad:9.0.9", options: --user root}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: {name: exports, path: exports} #Downloads the BOM, CSV and PDF
+      - name: apt install ngspice + Python stack 
+        run: |
+          echo "deb http://deb.debian.org/debian bookworm-backports main" > /etc/apt/sources.list.d/backports.list
+          apt-get update
+          apt-get install -y --no-install-recommends -t bookworm-backports ngspice #Free opensource ltspice
+          apt-get install -y --no-install-recommends make python3-numpy python3-scipy python3-yaml python3-matplotlib
+      - name: 27 corners (serial) #27 corners (MAKEFILE)
+        run: make corners PY=python3 && cat results/corners.md >> "$GITHUB_STEP_SUMMARY"
+      - name: 2000-run Monte Carlo (serial shards, all cores of this one runner)
+        run: make mc PY=python3  #Montecarlo (MAKEFILE)
+      - name: Report
+        if: always()
+        run: make report PY=python3 #Report (MAKEFILE)
+      - if: always()
+        uses: actions/upload-artifact@v4 #Upload the sim-results / report
+        with: {name: sim-results, path: results/}
